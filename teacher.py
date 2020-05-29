@@ -148,6 +148,7 @@ def teacher_predict(dataset):
             predict_all = np.append(predict_all, predic)
             p.append(outputs)
     return p
+    # return predict_all
 
 
 def teacher_train(config, model, train_iter, dev_iter, test_iter):
@@ -172,20 +173,14 @@ def teacher_train(config, model, train_iter, dev_iter, test_iter):
             # for name, w in model.named_parameters():
             #     if w.requires_grad:
             #         print(name)
-            if total_batch % 30 == 0:
+            if total_batch % 10 == 0:
                 # 每多少轮输出在训练集和验证集上的效果
                 true = labels.data.cpu()
                 predic = torch.max(outputs.data, 1)[1].cpu()
                 train_acc = metrics.accuracy_score(true, predic)
                 dev_acc, dev_loss = teacher_evaluate(config, model, dev_iter)
-                # if dev_loss < dev_best_loss:
-                #     dev_best_loss = dev_loss
-                #     torch.save(model.state_dict(), config.save_path)
-                #     improve = '*'
-                #     last_improve = total_batch
-
-                if loss.item() < tra_best_loss:
-                    tra_best_loss = loss.item()
+                if dev_loss < dev_best_loss:
+                    dev_best_loss = dev_loss
                     torch.save(model.state_dict(), config.save_path)
                     improve = '*'
                     last_improve = total_batch

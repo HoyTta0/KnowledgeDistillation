@@ -20,6 +20,13 @@ from sklearn.metrics import classification_report
 w2v_model = gensim.models.KeyedVectors.load_word2vec_format('sgns.wiki.word')
 
 
+def data2frame(x, y):
+    data = pd.DataFrame()
+    data['text'] = x
+    data['pred'] = y
+    return data
+
+
 # 生成句向量
 def build_sentence_vector(sentence,w2v_model):
 
@@ -81,7 +88,6 @@ def student_predict(dataset):
     model.eval()
     predict_all = []
     hidden_predict = None
-
     with torch.no_grad():
         for texts, labels in data:
             pred_X, hidden_predict = model(texts, hidden_predict)
@@ -94,36 +100,77 @@ def student_predict(dataset):
 
 
 def student_train(dataset):
-    t_logits = teacher_predict(dataset)
-    print(1)
-    train_loader = get_train_data(dataset)
+    X_train, X_test, y_train, y_test = \
+        train_test_split(dataset['text'], dataset['pred'], stratify=dataset['pred'], test_size=0.2, random_state=1)
+    train_student = data2frame(X_train, y_train)
+    test_student = data2frame(X_test, y_test)
+    t_logits = teacher_predict(train_student)
+    train_loader = get_train_data(train_student)
     student = biLSTM()
     total_params = sum(p.numel() for p in student.parameters())
     print(f'{total_params:,} total parameters.')
     optimizer = torch.optim.SGD(student.parameters(), lr=0.05)
+    total_batch = 0
+    total_epoch = 500
     tra_best_loss = float('inf')
+    dev_best_loss = float('inf')
     student.train()
-
-    for epoch in range(400):
+    start_time = time.time()
+    for epoch in range(total_epoch):
         hidden_train = None
-        print('Epoch [{}/{}]'.format(epoch + 1, 400))
-        for i, (x,y) in enumerate(train_loader):
+        print('Epoch [{}/{}]'.format(epoch + 1, total_epoch))
+        for i, (x, y) in enumerate(train_loader):
             optimizer.zero_grad()
             s_logits, _ = student(x, hidden_train)
             hidden_train = None
             label = y.squeeze(1).long()
-            loss = get_loss(t_logits[i], s_logits.squeeze(1), label, 0.2, 4)
-            # loss = get_loss(t_logits[i], s_logits, label, 0, 4)
+            loss = get_loss(t_logits[i], s_logits.squeeze(1), label, 0, 4)
             loss.backward()
             optimizer.step()
-            if loss.item() < tra_best_loss:
-                tra_best_loss = loss.item()
-                torch.save(student.state_dict(), 'data/saved_dict/lstm.ckpt')
-                print(loss.item())
-    student_test(dataset)
+            if total_batch % 100 == 0:
+                cur_pred = torch.squeeze(s_logits, dim=1)
+                train_acc = metrics.accuracy_score(y.squeeze(1).long(), torch.max(cur_pred, 1)[1].cpu().numpy())
+                _, dev_loss, dev_acc = student_evaluate(test_student, student)
+                if dev_loss < dev_best_loss:
+                    dev_best_loss = dev_loss
+                    torch.save(student.state_dict(), 'data/saved_dict/lstm.ckpt')
+                    improve = '*'
+                    last_improve = total_batch
+                else:
+                    improve = ''
+                time_dif = get_time_dif(start_time)
+                msg = 'Iter: {0:>6},  Train Loss: {1:>5.2},  Train Acc: {2:>6.2%},  Val Loss: {3:>5.2},  Val Acc: {4:>6.2%},  Time: {5} {6}'
+                print(msg.format(total_batch, loss.item(), train_acc, dev_loss, dev_acc, time_dif, improve))
+                student.train()
+            total_batch += 1
+
+    student_test(test_student)
+
+
+def student_evaluate(dataset, model):
+    data = get_train_data(dataset)
+    model.eval()
+    predict_all = []
+    labels_all = []
+    hidden_predict = None
+    loss_total = 0
+    with torch.no_grad():
+        for texts, labels in data:
+            pred_X, hidden_predict = model(texts, hidden_predict)
+            hidden_predict = None
+            cur_pred = torch.squeeze(pred_X, dim=1)
+            loss = F.cross_entropy(cur_pred.squeeze(1), labels.squeeze(1).long())
+            loss_total += loss
+            predic = torch.max(cur_pred, 1)[1].cpu().numpy()
+            labels = labels.data.cpu().numpy()
+            labels_all = np.append(labels_all, labels)
+            predict_all = np.append(predict_all, predic)
+    acc = metrics.accuracy_score(labels_all, predict_all)
+    return predict_all, loss_total/len(data), acc
 
 
 def student_test(dataset):
     # test
-    y = student_predict(dataset)
-    print(classification_report(dataset.pred, y))
+    y= student_predict(dataset)
+    print(classification_report(dataset.pred, y, target_names=[x.strip() for x in open(
+            'data/class_multi1.txt').readlines()], digits=4))

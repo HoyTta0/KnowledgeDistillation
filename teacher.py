@@ -147,8 +147,8 @@ def teacher_predict(dataset):
             predic = torch.max(outputs, 1)[1].cpu().numpy()
             predict_all = np.append(predict_all, predic)
             p.append(outputs)
-    return p
-    # return predict_all
+    # return p
+    return predict_all, p
 
 
 def teacher_train(config, model, train_iter, dev_iter, test_iter):
@@ -173,7 +173,7 @@ def teacher_train(config, model, train_iter, dev_iter, test_iter):
             # for name, w in model.named_parameters():
             #     if w.requires_grad:
             #         print(name)
-            if total_batch % 10 == 0:
+            if total_batch % 30 == 0:
                 # 每多少轮输出在训练集和验证集上的效果
                 true = labels.data.cpu()
                 predic = torch.max(outputs.data, 1)[1].cpu()

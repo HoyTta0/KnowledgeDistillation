@@ -37,7 +37,7 @@ if __name__ == '__main__':
         T_model = x.Model(config).to(config.device)
         teacher_train(config, T_model, train_iter, dev_iter, test_iter)
 
-    train_student = 0
+    train_student = 1
     if train_student:
         data = pd.read_csv('train.csv', encoding="utf-8", header=None, usecols=[0, 1, 2])
         data = data.sample(frac=1).reset_index(drop=True)

@@ -10,9 +10,7 @@ class Config(object):
     """配置参数"""
     def __init__(self, dataset):
         self.model_name = 'bert'
-        self.train_path = dataset + '/train.csv'                                # 训练集
-        self.dev_path = dataset + '/train.csv'                                    # 验证集
-        self.test_path = dataset + '/train.csv'                                  # 测试集
+        self.train_path = 'train.csv'                                # 训练集
         self.class_list = [x.strip() for x in open(
             dataset + '/class_multi1.txt').readlines()]                                # 类别名单
         self.save_path = dataset + '/saved_dict/' + self.model_name + '.ckpt'        # 模型训练结果

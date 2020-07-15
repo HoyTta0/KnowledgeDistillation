@@ -56,7 +56,7 @@ def build_predict_dataset(config, dataset):
 def build_train_dataset(config):
     data = pd.read_csv(config.train_path, encoding="utf-8", header=None)
     data = data.drop(index=[0])
-    data.columns = ['text', 'pred']
+    data.columns = ['user', 'text', 'pred']
     X_train, X_test, y_train, y_test = \
         train_test_split(data['text'], data['pred'], stratify=data['pred'], test_size=0.2, random_state=1)
     train = load_dataset(config, X_train, y_train, config.pad_size)

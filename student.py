@@ -67,7 +67,7 @@ def get_train_data(dataset):
     train_y = [label_data[i:i + 1] for i in range(len(dataset))]
     train_x, train_y = np.array(train_x), np.array(train_y)
     train_X, train_Y = torch.from_numpy(train_x).float(), torch.from_numpy(train_y).float()
-    train_loader = DataLoader(TensorDataset(train_X, train_Y), batch_size=1)
+    train_loader = DataLoader(TensorDataset(train_X, train_Y), batch_size=64)
 
     return train_loader
 

@@ -17,6 +17,10 @@
 
 ## 更新日志
 
+### 2020.07.15
+
+>  修复bug，添加textGCN模型（单独训练，模型效果较差）。
+
 ### 2020.07.06
 
 >  移除模型介绍＆部分模型实现，增加使用说明及运行环境。
@@ -38,6 +42,14 @@ pytorch 1.1 （BERT模型参考[**Bert-Chinese-Text-Classification-Pytorch**](ht
 下载[预训练BERT模型参数 pytorch_model.bin](https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese.tar.gz)放入KnowledgeDistillation/bert_pretrain
 
 KnowledgeDistillation/data/下创建saved_dict目录
+
+
+
+运行 python distill.py
+
+distill.py中train_teacher、train_student、test分别表示训练教师模型、训练学生模型以及测试模型效果
+
+想要单独训练学生模型，只需将student.py中损失函数的a=1，T=0即可。
 
 ## 模型实现
 

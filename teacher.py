@@ -16,123 +16,20 @@ from utils import get_time_dif
 import torch.nn.functional as F
 from importlib import import_module
 from sklearn.model_selection import train_test_split
-
+from models.bert import *
+from torch.utils.data import DataLoader, TensorDataset
 
 PAD, CLS = '[PAD]', '[CLS]'
-
-
-def load_dataset(config, x, y, pad_size=32):
-    contents = []
-    re_data = []
-    for i in x:
-        i_re = ''.join(re.findall(r'[A-Za-z0-9\u4e00-\u9fa5]', i))
-        re_data.append(i_re.strip())
-    for content, label in zip(re_data, y):
-        token = config.tokenizer.tokenize(content)
-        token = [CLS] + token
-        seq_len = len(token)
-        mask = []
-        token_ids = config.tokenizer.convert_tokens_to_ids(token)
-
-        if pad_size:
-            if len(token) < pad_size:
-                mask = [1] * len(token_ids) + [0] * (pad_size - len(token))
-                token_ids += ([0] * (pad_size - len(token)))
-            else:
-                mask = [1] * pad_size
-                token_ids = token_ids[:pad_size]
-                seq_len = pad_size
-        contents.append((token_ids, int(label), seq_len, mask))
-    return contents
-
-
-# 按一定格式构造教师数据输入
-def build_predict_dataset(config, dataset):
-
-    data = load_dataset(config, dataset.text, dataset.pred, config.pad_size)
-    return data
-
-
-def build_train_dataset(config):
-    data = pd.read_csv(config.train_path, encoding="utf-8", header=None)
-    data = data.drop(index=[0])
-    data.columns = ['user', 'text', 'pred']
-    X_train, X_test, y_train, y_test = \
-        train_test_split(data['text'], data['pred'], stratify=data['pred'], test_size=0.2, random_state=1)
-    train = load_dataset(config, X_train, y_train, config.pad_size)
-    dev = load_dataset(config, X_test, y_test, config.pad_size)
-    test = load_dataset(config, X_test, y_test, config.pad_size)
-    # df = pd.DataFrame()
-    # df['text'] = X_test
-    # df.to_csv('text.csv', encoding="utf_8_sig",columns=['text'])
-    return train, dev, test
-
-
-class DatasetIterater(object):
-
-    def __init__(self, batches, batch_size, device):
-        self.batch_size = batch_size
-        self.batches = batches
-        self.n_batches = len(batches) // batch_size if len(batches) // batch_size!=0 else 1
-        self.residue = False  # 记录batch数量是否为整数
-        if len(batches) % self.n_batches != 0:
-            self.residue = True
-        self.index = 0
-        self.device = device
-
-    def _to_tensor(self, datas):
-        x = torch.LongTensor([_[0] for _ in datas]).to(self.device)
-        y = torch.LongTensor([_[1] for _ in datas]).to(self.device)
-
-        # pad前的长度(超过pad_size的设为pad_size)
-        seq_len = torch.LongTensor([_[2] for _ in datas]).to(self.device)
-        mask = torch.LongTensor([_[3] for _ in datas]).to(self.device)
-
-        return (x, seq_len, mask), y
-
-    def __next__(self):
-        if self.residue and self.index == self.n_batches:
-            batches = self.batches[self.index * self.batch_size: len(self.batches)]
-            self.index += 1
-            batches = self._to_tensor(batches)
-            return batches
-
-        elif self.index >= self.n_batches:
-            self.index = 0
-            raise StopIteration
-        else:
-            batches = self.batches[self.index * self.batch_size: (self.index + 1) * self.batch_size]
-            self.index += 1
-            batches = self._to_tensor(batches)
-            return batches
-
-    def __iter__(self):
-        return self
-
-    def __len__(self):
-        if self.residue:
-            return self.n_batches + 1
-        else:
-            return self.n_batches
-
-
-def build_iterator(dataset, config):
-
-    iter = DatasetIterater(dataset, config.batch_size, config.device)
-    return iter
 
 
 # 预测教师模型输出结果
 def teacher_predict(dataset):
 
-    model_name = 'bert'
-    x = import_module('models.' + model_name)
-    config = x.Config('data')
+    config = Config('data')
 
-    test_data = build_predict_dataset(config, dataset)
-    test_iter = build_iterator(test_data, config)
+    test_data = load_embed(dataset.text, dataset.pred)
 
-    model = x.Model(config).to(config.device)
+    model = Model(config).to(config.device)
     model.load_state_dict(torch.load(config.save_path))
     total_params = sum(p.numel() for p in model.parameters())
     print(f'{total_params:,} total parameters.')
@@ -142,8 +39,8 @@ def teacher_predict(dataset):
     p = []
 
     with torch.no_grad():
-        for texts, labels in test_iter:
-            outputs = model(texts)
+        for a,b,c, labels in test_data:
+            outputs = model([a,b,c])
             predic = torch.max(outputs, 1)[1].cpu().numpy()
             predict_all = np.append(predict_all, predic)
             p.append(outputs)
@@ -151,21 +48,62 @@ def teacher_predict(dataset):
     return predict_all, p
 
 
-def teacher_train(config, model, train_iter, dev_iter, test_iter):
+def load_embed(x,y, pad_size=32):
+    contents_token_ids = []
+    contents_seq_len = []
+    contents_mask = []
+    contents_labels = []
+
+    re_data = []
+    for i in x:
+        i_re = ''.join(re.findall(r'[A-Za-z0-9\u4e00-\u9fa5]', i))
+        re_data.append(i_re.strip())
+    for content,label in zip(re_data,y):
+    # content = ''.join(re.findall(r'[A-Za-z0-9\u4e00-\u9fa5]', x)).strip()
+
+        token = BertTokenizer.from_pretrained('./bert_pretrain').tokenize(content)
+        token = [CLS] + token
+        seq_len = len(token)
+        mask = []
+        token_ids = BertTokenizer.from_pretrained('./bert_pretrain').convert_tokens_to_ids(token)
+        if pad_size:
+            if len(token) < pad_size:
+                mask = [1] * len(token_ids) + [0] * (pad_size - len(token))
+                token_ids += ([0] * (pad_size - len(token)))
+            else:
+                mask = [1] * pad_size
+                token_ids = token_ids[:pad_size]
+                seq_len = pad_size
+        contents_labels.append(int(label))
+        contents_token_ids.append(token_ids)
+        contents_seq_len.append(seq_len)
+        contents_mask.append(mask)
+
+    contents_labels = torch.LongTensor(contents_labels)
+    contents_token_ids = torch.LongTensor(contents_token_ids)
+    contents_seq_len = torch.LongTensor(contents_seq_len)
+    contents_mask = torch.LongTensor(contents_mask)
+
+    train_loader = DataLoader(TensorDataset(contents_token_ids,contents_seq_len,contents_mask,contents_labels), batch_size=64)
+
+    return train_loader
+
+
+def teacher_train(config, model, train_iter, dev_iter):
     start_time = time.time()
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+    # model.load_state_dict(torch.load('data/saved_dict/xlnet.ckpt'))
     total_batch = 0  # 记录进行到多少batch
     dev_best_loss = float('inf')
-    tra_best_loss = float('inf')
     last_improve = 0  # 记录上次验证集loss下降的batch数
     flag = False  # 记录是否很久没有效果提升
     model.train()
     for epoch in range(config.num_epochs):
         print('Epoch [{}/{}]'.format(epoch + 1, config.num_epochs))
-        for i, (trains, labels) in enumerate(train_iter):
+        for i, (a,b,c, labels) in enumerate(train_iter):
             # print(total_batch)
-            outputs = model(trains)
+            outputs = model([a,b,c])
             model.zero_grad()
             loss = F.cross_entropy(outputs, labels)
             loss.backward()
@@ -173,7 +111,7 @@ def teacher_train(config, model, train_iter, dev_iter, test_iter):
             # for name, w in model.named_parameters():
             #     if w.requires_grad:
             #         print(name)
-            if total_batch % 30 == 0:
+            if total_batch % 10 == 0:
                 # 每多少轮输出在训练集和验证集上的效果
                 true = labels.data.cpu()
                 predic = torch.max(outputs.data, 1)[1].cpu()
@@ -198,7 +136,7 @@ def teacher_train(config, model, train_iter, dev_iter, test_iter):
                 break
         if flag:
             break
-    teacher_test(config, model, test_iter)
+    teacher_test(config, model, dev_iter)
 
 
 def teacher_test(config, model, test_iter):
@@ -223,9 +161,9 @@ def teacher_evaluate(config, model, data_iter, test=False):
     predict_all = np.array([], dtype=int)
     labels_all = np.array([], dtype=int)
     with torch.no_grad():
-        for texts, labels in data_iter:
+        for a,b,c, labels in data_iter:
             # print(texts)
-            outputs = model(texts)
+            outputs = model([a,b,c])
             loss = F.cross_entropy(outputs, labels)
             loss_total += loss
             labels = labels.data.cpu().numpy()

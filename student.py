@@ -76,7 +76,7 @@ def get_train_data(dataset):
 def get_loss(t_logits, s_logits, label, a, T):
     loss1 = nn.CrossEntropyLoss()
     loss2 = nn.MSELoss()
-    loss = a * loss1(s_logits, label) + T * loss2(t_logits, s_logits)
+    loss = a * loss1(s_logits, label) #+ T * loss2(t_logits, s_logits)
     # print(loss1(s_logits, label),loss2(t_logits, s_logits))
     return loss
 
@@ -115,7 +115,7 @@ def student_train(dataset):
     print(f'{total_params:,} total parameters.')
     optimizer = torch.optim.SGD(student.parameters(), lr=0.05)
     total_batch = 0
-    total_epoch = 100
+    total_epoch = 50
     tra_best_loss = float('inf')
     dev_best_loss = float('inf')
     student.train()
@@ -164,7 +164,7 @@ def student_evaluate(dataset, model, t_logits):
             hidden_predict = None
             cur_pred = torch.squeeze(pred_X, dim=1)
             # loss = F.cross_entropy(cur_pred.squeeze(1), labels.squeeze(1).long())
-            loss = get_loss(t_logits[i], pred_X.squeeze(1), labels.squeeze(1).long(), 1, 2)
+            loss = get_loss(t_logits[i], pred_X.squeeze(1), labels.squeeze(1).long(), 1, 3)
             loss_total += loss
             predic = torch.max(cur_pred, 1)[1].cpu().numpy()
             labels = labels.data.cpu().numpy()
@@ -178,4 +178,4 @@ def student_test(dataset):
     # test
     y= student_predict(dataset)
     print(classification_report(dataset.pred, y, target_names=[x.strip() for x in open(
-            'data/class_multi1.txt').readlines()], digits=4))
+            'data/class_multi.txt').readlines()], digits=4))

@@ -9,11 +9,9 @@ class Config(object):
 
     """配置参数"""
     def __init__(self, dataset):
-        self.model_name = 'bert'
-        self.train_path = '学龄前.csv'                                # 训练集
         self.class_list = [x.strip() for x in open(
-            dataset + '/class_multi.txt').readlines()]                                # 类别名单
-        self.save_path = dataset + '/saved_dict/学龄前' + self.model_name + '.ckpt'        # 模型训练结果
+            dataset + '/class_multi1.txt').readlines()]                                # 类别名单
+        self.save_path = dataset + '/saved_dict/'  + '.ckpt'        # 模型训练结果
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   # 设备
 
         self.require_improvement = 1000                                 # 若超过1000batch效果还没提升，则提前结束训练

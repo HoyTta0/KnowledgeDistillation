@@ -13,11 +13,11 @@ import torch.nn.functional as F
 class biLSTM(nn.Module):
     def __init__(self):
         super(biLSTM, self).__init__()
-        self.lstm = nn.LSTM(input_size=300, hidden_size=96,
+        self.lstm = nn.LSTM(input_size=300, hidden_size=768,
                             num_layers=1, batch_first=True, dropout=0, bidirectional=True)
         # self.linear = nn.Linear(in_features=256, out_features=2)
-        self.fc1 = nn.Linear(192, 48)
-        self.fc2 = nn.Linear(48, 5)
+        self.fc1 = nn.Linear(768*2, 192)
+        self.fc2 = nn.Linear(192, 5)
 
     def forward(self, x, hidden=None):
         lstm_out, hidden = self.lstm(x, hidden)     # LSTM 的返回很多

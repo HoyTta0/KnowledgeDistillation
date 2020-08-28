@@ -17,6 +17,10 @@
 
 ## 更新日志
 
+### 2020.08.28
+
+>  整理代码结构，抛弃借鉴的Bert模型，增加xlnet模型，预训练xlnet模型效果较差，可以在模型基础上再进行预训练，因此添加了模型预训练代码。
+
 ### 2020.07.15
 
 >  修复bug，添加textGCN模型（单独训练，模型效果较差）。
@@ -33,7 +37,11 @@
 
 python 3.7
 
-pytorch 1.1 （BERT模型参考[**Bert-Chinese-Text-Classification-Pytorch**](https://github.com/649453932/Bert-Chinese-Text-Classification-Pytorch)，有较多改动）
+~~pytorch 1.1 （BERT模型参考[**Bert-Chinese-Text-Classification-Pytorch**](https://github.com/649453932/Bert-Chinese-Text-Classification-Pytorch)，有较多改动）~~
+
+transformers 3.0.2
+
+torch 1.5.0
 
 ## 使用说明
 
@@ -165,7 +173,7 @@ Student
 
 1. ~~直接用student模型训练效果如何，未做测试。~~ （在公开数据集上完成测试，并上传了训练代码）
 2. 学生模型用了句向量表征，原论文用的词向量，后续工作将换回。
-3. 教师模型参考了别人的代码，后续会自己搭BERT。
+3. ~~教师模型参考了别人的代码，后续会自己搭BERT~~。
 
 ## 参考链接
 

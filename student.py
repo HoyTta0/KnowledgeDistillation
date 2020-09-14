@@ -76,7 +76,7 @@ def get_train_data(dataset):
 def get_loss(t_logits, s_logits, label, a, T):
     loss1 = nn.CrossEntropyLoss()
     loss2 = nn.MSELoss()
-    loss = a * loss1(s_logits, label) #+ T * loss2(t_logits, s_logits)
+    loss = a * loss1(s_logits, label) + T * loss2(t_logits, s_logits)
     # print(loss1(s_logits, label),loss2(t_logits, s_logits))
     return loss
 
@@ -128,7 +128,7 @@ def student_train(dataset):
             s_logits, _ = student(x, hidden_train)
             hidden_train = None
             label = y.squeeze(1).long()
-            loss = get_loss(t_logits[i], s_logits.squeeze(1), label, 1, 3)
+            loss = get_loss(t_logits[i], s_logits.squeeze(1), label, 1, 0)
             loss.backward()
             optimizer.step()
             if total_batch % 50 == 0:
@@ -178,4 +178,4 @@ def student_test(dataset):
     # test
     y= student_predict(dataset)
     print(classification_report(dataset.pred, y, target_names=[x.strip() for x in open(
-            'data/class_multi.txt').readlines()], digits=4))
+            'data/class_multi1.txt').readlines()], digits=4))

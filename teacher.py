@@ -23,11 +23,11 @@ PAD, CLS = '[PAD]', '[CLS]'
 
 
 # 预测教师模型输出结果
-def teacher_predict(dataset):
+def teacher_predict(x,y):
 
     config = Config('data')
 
-    test_data = load_embed(dataset.text, dataset.pred)
+    test_data = load_embed(x, y)
 
     model = Model(config).to(config.device)
     model.load_state_dict(torch.load(config.save_path))
@@ -48,7 +48,7 @@ def teacher_predict(dataset):
     return predict_all, p
 
 
-def load_embed(x,y, pad_size=32):
+def load_embed(x, y, pad_size=32):
     contents_token_ids = []
     contents_seq_len = []
     contents_mask = []

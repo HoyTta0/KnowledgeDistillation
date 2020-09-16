@@ -48,8 +48,10 @@ if __name__ == '__main__':
 
     train_student = 1
     if train_student:
+        X_train, X_test, y_train, y_test = \
+            train_test_split(data['text'], data['pred'], stratify=data['pred'], test_size=0.2, random_state=1)
 
-        student_train(data)
+        student_train(X_train, X_test, y_train, y_test)
 
     test = 0
     if test:
@@ -59,10 +61,10 @@ if __name__ == '__main__':
         data.columns = ['user', 'text', 'pred']
         data = data.apply(pd.to_numeric, errors='ignore')
 
-        s_predict = student_predict(data)
+        s_predict = student_predict(data.text, data.pred)
         print(classification_report(data.pred, s_predict, target_names=[x.strip() for x in open(
             'data/class_multi1.txt').readlines()], digits=4))
-        t_predict, _ = teacher_predict(data)
+        t_predict, _ = teacher_predict(data.text, data.pred)
         print(classification_report(data.pred, t_predict, target_names=[x.strip() for x in open(
             'data/class_multi1.txt').readlines()], digits=4))
 

@@ -58,14 +58,15 @@ def load_embed(x, y, pad_size=32):
     for i in x:
         i_re = ''.join(re.findall(r'[A-Za-z0-9\u4e00-\u9fa5]', i))
         re_data.append(i_re.strip())
+    tokenizer = BertTokenizer.from_pretrained('./bert_pretrain')
     for content,label in zip(re_data,y):
     # content = ''.join(re.findall(r'[A-Za-z0-9\u4e00-\u9fa5]', x)).strip()
 
-        token = BertTokenizer.from_pretrained('./bert_pretrain').tokenize(content)
+        token = tokenizer.tokenize(content)
         token = [CLS] + token
         seq_len = len(token)
         mask = []
-        token_ids = BertTokenizer.from_pretrained('./bert_pretrain').convert_tokens_to_ids(token)
+        token_ids = tokenizer.convert_tokens_to_ids(token)
         if pad_size:
             if len(token) < pad_size:
                 mask = [1] * len(token_ids) + [0] * (pad_size - len(token))

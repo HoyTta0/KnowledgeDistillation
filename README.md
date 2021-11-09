@@ -9,13 +9,17 @@
 - [使用说明](#使用说明)
 - [模型实现](#模型实现)
   - [代码结构](#代码结构)
-  - [学生模型输入](#学生模型输入)
 - [模型效果](#模型效果)
 - [公开数据集测试效果](#TNEWS测试效果)
 - [已知问题](#已知问题)
+- [TODO](#TODO)
 - [参考链接](#参考链接)
 
 ## 更新日志
+
+### 2021.11.10
+
+>  大幅改动，整理数据格式，优化代码，使用最新第三方包，旧版本代码在v0.1分支查看。
 
 ### 2020.08.28
 
@@ -37,25 +41,32 @@
 
 python 3.7
 
-~~pytorch 1.1 （BERT模型参考[**Bert-Chinese-Text-Classification-Pytorch**](https://github.com/649453932/Bert-Chinese-Text-Classification-Pytorch)，有较多改动）~~
+transformers 4.11.3
 
-transformers 3.0.2
-
-torch 1.5.0
+torch 1.10.0
 
 ## 使用说明
 
-下载[Wikipedia_zh 中文维基百科  预训练词向量](https://github.com/Embedding/Chinese-Word-Vectors)放入KnowledgeDistillation/
-
 下载[预训练BERT模型参数 pytorch_model.bin](https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese.tar.gz)放入KnowledgeDistillation/bert_pretrain
-
-KnowledgeDistillation/data/下创建saved_dict目录
 
 
 
 运行 python distill.py
 
-distill.py中train_teacher、train_student、test分别表示训练教师模型、训练学生模型以及测试模型效果
+config.py中train_teacher、train_student分别表示是否训练教师模型、训练学生模型。
+
+```python
+  单独训练教师模型      
+  self.train_teacher = 1
+  self.train_student = 0
+  教师模型与学生模型串行训练（蒸馏）
+  self.train_teacher = 1
+  self.train_student = 1
+  想要单独训练学生模型，需配置student.py中损失函数a=1，T=0，
+  且saved_dict中存在训练好的教师模型teacher.ckpt，否则需要对代码进行改动
+  self.train_teacher = 0
+  self.train_student = 1
+```
 
 想要单独训练学生模型，只需将student.py中损失函数的a=1，T=0即可。
 
@@ -73,28 +84,6 @@ Student模型：一层的biLSTM
 LOSS函数：交叉熵 、MSE LOSS
 
 知识函数：用最后一层的softmax前的logits作为知识表示
-
-### 学生模型输入
-
-Student模型的输入句向量由句中每一个词向量求和取平均得到，[预训练词向量](https://github.com/Embedding/Chinese-Word-Vectors)为预训练好的300维中文向量，训练数据集为Wikipedia_zh中文维基百科。
-
-```python
-w2v_model = gensim.models.KeyedVectors.load_word2vec_format('sgns.wiki.word')
-# 生成句向量
-def build_sentence_vector(sentence,w2v_model):
-
-    sen_vec = [0]*300
-    count = 0
-    for word in sentence:
-        try:
-            sen_vec += w2v_model[word]
-            count += 1
-        except KeyError:
-            continue
-    if count != 0:
-        sen_vec /= count
-    return sen_vec
-```
 
 ## 模型效果
 
@@ -172,8 +161,12 @@ Student
 ## 已知问题
 
 1. ~~直接用student模型训练效果如何，未做测试。~~ （在公开数据集上完成测试，并上传了训练代码）
-2. 学生模型用了句向量表征，原论文用的词向量，后续工作将换回。
+2. ~~学生模型用了句向量表征，~~原论文用的词向量，后续工作将换回。
 3. ~~教师模型参考了别人的代码，后续会自己搭BERT~~。
+
+## TODO
+
+1. 学生模型加载预训练词向量（目前随机初始化）
 
 ## 参考链接
 

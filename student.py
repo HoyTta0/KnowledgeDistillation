@@ -6,18 +6,7 @@
 # @File    : student.py
 # @Software: PyCharm
 """
-import re
-import jieba
-import torch
-import gensim
-import numpy as np
-from models.biLSTM import *
 from teacher import *
-from torch.utils.data import DataLoader, TensorDataset
-from sklearn.metrics import classification_report
-
-
-w2v_model = gensim.models.KeyedVectors.load_word2vec_format('sgns.wiki.word')
 
 
 # 生成句向量
@@ -36,35 +25,6 @@ def build_sentence_vector(sentence,w2v):
     return sen_vec
 
 
-# 按一定格式构造学生数据输入
-def get_train_data(textx,labely):
-
-    def load_dataset(x1, y):
-        re_data = []
-        f_data = []
-        l_data = []
-        for i in x1:
-            i_re = ''.join(re.findall(r'[A-Za-z0-9\u4e00-\u9fa5]', i))
-            re_data.append(i_re.strip())
-        for content, label in zip(re_data,y):
-            token = jieba.cut(content)
-            token = [word for word in token]
-            token = build_sentence_vector(token, w2v_model)
-            f_data.append(token)
-            l_data.append(int(label))
-        return f_data, l_data
-
-    feature_data, label_data = load_dataset(textx, labely)
-    feature_data, label_data = np.array(feature_data), np.array(label_data)
-    train_x = [feature_data[i:i + 1] for i in range(len(textx))]
-    train_y = [label_data[i:i + 1] for i in range(len(labely))]
-    train_x, train_y = np.array(train_x), np.array(train_y)
-    train_X, train_Y = torch.from_numpy(train_x).float(), torch.from_numpy(train_y).float()
-    train_loader = DataLoader(TensorDataset(train_X, train_Y), batch_size=64)
-
-    return train_loader
-
-
 # 损失函数
 def get_loss(t_logits, s_logits, label, a, T):
     loss1 = nn.CrossEntropyLoss()
@@ -74,59 +34,34 @@ def get_loss(t_logits, s_logits, label, a, T):
     return loss
 
 
-# 预测学生模型输出结果
-def student_predict(x,y):
-    model = biLSTM()
-    data = get_train_data(x,y)
-    model.load_state_dict(torch.load('data/saved_dict/lstm.ckpt'))
-    model.eval()
-    predict_all = []
-    hidden_predict = None
-    total_params = sum(p.numel() for p in model.parameters())
+def student_train(T_model, S_model, config, train_loader, test_loader):
+    t_train_logits = teacher_predict(T_model, config, train_loader)
+    t_test_logits = teacher_predict(T_model, config, test_loader)
+    total_params = sum(p.numel() for p in S_model.parameters())
     print(f'{total_params:,} total parameters.')
-    with torch.no_grad():
-        for texts, labels in data:
-            pred_X, hidden_predict = model(texts, hidden_predict)
-            hidden_predict = None
-            cur_pred = torch.squeeze(pred_X, dim=1)
-            predic = torch.max(cur_pred, 1)[1].cpu().numpy()
-            predict_all = np.append(predict_all, predic)
-
-    return predict_all
-
-
-def student_train(X_train, X_test, y_train, y_test):
-    _, t_logits = teacher_predict(X_train, y_train)
-    _, t_test = teacher_predict(X_test, y_test)
-    train_loader = get_train_data(X_train, y_train)
-    student = biLSTM()
-    total_params = sum(p.numel() for p in student.parameters())
-    print(f'{total_params:,} total parameters.')
-    optimizer = torch.optim.SGD(student.parameters(), lr=0.05)
+    optimizer = torch.optim.SGD(S_model.parameters(), lr=0.05)
     total_batch = 0
-    total_epoch = 20
     tra_best_loss = float('inf')
     dev_best_loss = float('inf')
-    student.train()
+    S_model.train()
     start_time = time.time()
-    for epoch in range(total_epoch):
-        hidden_train = None
-        print('Epoch [{}/{}]'.format(epoch + 1, total_epoch))
-        for i, (x, y) in enumerate(train_loader):
+    for epoch in range(config.student_num_epochs):
+        print('Epoch [{}/{}]'.format(epoch + 1, config.student_num_epochs))
+        for i, (texts, _, label) in enumerate(train_loader):
+            texts = texts.to(config.device)
+            label = label.to(config.device)
             optimizer.zero_grad()
-            s_logits, _ = student(x, hidden_train)
-            hidden_train = None
-            label = y.squeeze(1).long()
-            loss = get_loss(t_logits[i], s_logits.squeeze(1), label, 1, 0)
+            s_logits = S_model(texts)
+            loss = get_loss(t_train_logits[i], s_logits, label.long(), 1, 2)
             loss.backward()
             optimizer.step()
             if total_batch % 50 == 0:
                 cur_pred = torch.squeeze(s_logits, dim=1)
-                train_acc = metrics.accuracy_score(y.squeeze(1).long(), torch.max(cur_pred, 1)[1].cpu().numpy())
-                _, dev_loss, dev_acc = student_evaluate(X_test, y_test, student, t_test)
+                train_acc = metrics.accuracy_score(label.long(), torch.max(cur_pred, 1)[1].cpu().numpy())
+                dev_loss, dev_acc = student_evaluate(S_model, config, t_test_logits, test_loader)
                 if dev_loss < dev_best_loss:
                     dev_best_loss = dev_loss
-                    torch.save(student.state_dict(), 'data/saved_dict/lstm.ckpt')
+                    torch.save(S_model.state_dict(), config.student_save_path)
                     improve = '*'
                     last_improve = total_batch
                 else:
@@ -134,37 +69,31 @@ def student_train(X_train, X_test, y_train, y_test):
                 time_dif = get_time_dif(start_time)
                 msg = 'Iter: {0:>6},  Train Loss: {1:>5.2},  Train Acc: {2:>6.2%},  Val Loss: {3:>5.2},  Val Acc: {4:>6.2%},  Time: {5} {6}'
                 print(msg.format(total_batch, loss.item(), train_acc, dev_loss, dev_acc, time_dif, improve))
-                student.train()
+                S_model.train()
             total_batch += 1
+    student_evaluate(S_model, config, t_test_logits, test_loader)
 
-    student_test(X_test, y_test)
 
-
-def student_evaluate(x, y, model, t_logits):
-    data = get_train_data(x,y)
-    model.eval()
+def student_evaluate(S_model, config, t_logits, test_loader):
+    S_model.eval()
     predict_all = []
     labels_all = []
-    hidden_predict = None
     loss_total = 0
     with torch.no_grad():
-        for i, (texts, labels) in enumerate(data):
-            pred_X, hidden_predict = model(texts, hidden_predict)
-            hidden_predict = None
-            cur_pred = torch.squeeze(pred_X, dim=1)
-            # loss = F.cross_entropy(cur_pred.squeeze(1), labels.squeeze(1).long())
-            loss = get_loss(t_logits[i], pred_X.squeeze(1), labels.squeeze(1).long(), 1, 3)
+        for i, (texts, _, label) in enumerate(test_loader):
+            texts = texts.to(config.device)
+            label = label.to(config.device)
+            s_logits = S_model(texts)
+            loss = get_loss(t_logits[i], s_logits, label.long(), 1, 2)
             loss_total += loss
+
+            cur_pred = torch.squeeze(s_logits, dim=1)
             predic = torch.max(cur_pred, 1)[1].cpu().numpy()
-            labels = labels.data.cpu().numpy()
-            labels_all = np.append(labels_all, labels)
+            label = label.data.cpu().numpy()
+            labels_all = np.append(labels_all, label)
             predict_all = np.append(predict_all, predic)
     acc = metrics.accuracy_score(labels_all, predict_all)
-    return predict_all, loss_total/len(data), acc
+    return loss_total/len(test_loader), acc
 
 
-def student_test(x, y):
-    # test
-    label = student_predict(x,y)
-    print(classification_report(y, label, target_names=[x.strip() for x in open(
-            'data/class_multi1.txt').readlines()], digits=4))
+

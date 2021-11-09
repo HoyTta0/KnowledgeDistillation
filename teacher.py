@@ -6,91 +6,29 @@
 # @File    : teacher.py
 # @Software: PyCharm
 """
-import re
 import time
 import torch
 import numpy as np
-import pandas as pd
+from models.bert import *
 from sklearn import metrics
 from utils import get_time_dif
-import torch.nn.functional as F
-from importlib import import_module
-from sklearn.model_selection import train_test_split
-from models.bert import *
-from torch.utils.data import DataLoader, TensorDataset
-
-PAD, CLS = '[PAD]', '[CLS]'
 
 
-# 预测教师模型输出结果
-def teacher_predict(x,y):
-
-    config = Config('data')
-
-    test_data = load_embed(x, y)
-
-    model = Model(config).to(config.device)
-    model.load_state_dict(torch.load(config.save_path))
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f'{total_params:,} total parameters.')
+def teacher_predict(model, config, loader):
     model.eval()
-
-    predict_all = np.array([], dtype=int)
-    p = []
-
+    model.load_state_dict(torch.load(config.teacher_save_path))
+    t_logits = []
     with torch.no_grad():
-        for a,b,c, labels in test_data:
-            outputs = model([a,b,c])
-            predic = torch.max(outputs, 1)[1].cpu().numpy()
-            predict_all = np.append(predict_all, predic)
-            p.append(outputs)
-    # return p
-    return predict_all, p
+        for ids, mask, labels in loader:
+            # print(texts)
+            ids = ids.to(config.device)
+            mask = mask.to(config.device)
+            outputs = model(ids, mask)
+            t_logits.append(outputs)
+    return t_logits
 
 
-def load_embed(x, y, pad_size=32):
-    contents_token_ids = []
-    contents_seq_len = []
-    contents_mask = []
-    contents_labels = []
-
-    re_data = []
-    for i in x:
-        i_re = ''.join(re.findall(r'[A-Za-z0-9\u4e00-\u9fa5]', i))
-        re_data.append(i_re.strip())
-    tokenizer = BertTokenizer.from_pretrained('./bert_pretrain')
-    for content,label in zip(re_data,y):
-    # content = ''.join(re.findall(r'[A-Za-z0-9\u4e00-\u9fa5]', x)).strip()
-
-        token = tokenizer.tokenize(content)
-        token = [CLS] + token
-        seq_len = len(token)
-        mask = []
-        token_ids = tokenizer.convert_tokens_to_ids(token)
-        if pad_size:
-            if len(token) < pad_size:
-                mask = [1] * len(token_ids) + [0] * (pad_size - len(token))
-                token_ids += ([0] * (pad_size - len(token)))
-            else:
-                mask = [1] * pad_size
-                token_ids = token_ids[:pad_size]
-                seq_len = pad_size
-        contents_labels.append(int(label))
-        contents_token_ids.append(token_ids)
-        contents_seq_len.append(seq_len)
-        contents_mask.append(mask)
-
-    contents_labels = torch.LongTensor(contents_labels)
-    contents_token_ids = torch.LongTensor(contents_token_ids)
-    contents_seq_len = torch.LongTensor(contents_seq_len)
-    contents_mask = torch.LongTensor(contents_mask)
-
-    train_loader = DataLoader(TensorDataset(contents_token_ids,contents_seq_len,contents_mask,contents_labels), batch_size=64)
-
-    return train_loader
-
-
-def teacher_train(config, model, train_iter, dev_iter):
+def teacher_train(model, config, train_loader, test_loader):
     start_time = time.time()
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
@@ -100,11 +38,13 @@ def teacher_train(config, model, train_iter, dev_iter):
     last_improve = 0  # 记录上次验证集loss下降的batch数
     flag = False  # 记录是否很久没有效果提升
     model.train()
-    for epoch in range(config.num_epochs):
-        print('Epoch [{}/{}]'.format(epoch + 1, config.num_epochs))
-        for i, (a,b,c, labels) in enumerate(train_iter):
+    for epoch in range(config.teacher_num_epochs):
+        print('Epoch [{}/{}]'.format(epoch + 1, config.teacher_num_epochs))
+        for i, (ids, mask , labels) in enumerate(train_loader):
             # print(total_batch)
-            outputs = model([a,b,c])
+            ids = ids.to(config.device)
+            mask = mask.to(config.device)
+            outputs = model(ids, mask)
             model.zero_grad()
             loss = F.cross_entropy(outputs, labels)
             loss.backward()
@@ -117,10 +57,10 @@ def teacher_train(config, model, train_iter, dev_iter):
                 true = labels.data.cpu()
                 predic = torch.max(outputs.data, 1)[1].cpu()
                 train_acc = metrics.accuracy_score(true, predic)
-                dev_acc, dev_loss = teacher_evaluate(config, model, dev_iter)
+                dev_acc, dev_loss = teacher_evaluate(model, config, test_loader)
                 if dev_loss < dev_best_loss:
                     dev_best_loss = dev_loss
-                    torch.save(model.state_dict(), config.save_path)
+                    torch.save(model.state_dict(), config.teacher_save_path)
                     improve = '*'
                     last_improve = total_batch
                 else:
@@ -137,15 +77,15 @@ def teacher_train(config, model, train_iter, dev_iter):
                 break
         if flag:
             break
-    teacher_test(config, model, dev_iter)
+    teacher_test(model, config, test_loader)
 
 
-def teacher_test(config, model, test_iter):
+def teacher_test(model, config, test_loader):
     # test
-    model.load_state_dict(torch.load(config.save_path))
+    model.load_state_dict(torch.load(config.teacher_save_path))
     model.eval()
     start_time = time.time()
-    test_acc, test_loss, test_report, test_confusion = teacher_evaluate(config, model, test_iter, test=True)
+    test_acc, test_loss, test_report, test_confusion = teacher_evaluate(model, config, test_loader, test=True)
     msg = 'Test Loss: {0:>5.2},  Test Acc: {1:>6.2%}'
     print(msg.format(test_loss, test_acc))
     print("Precision, Recall and F1-Score...")
@@ -156,15 +96,17 @@ def teacher_test(config, model, test_iter):
     print("Time usage:", time_dif)
 
 
-def teacher_evaluate(config, model, data_iter, test=False):
+def teacher_evaluate(model, config, test_loader, test=False):
     model.eval()
     loss_total = 0
     predict_all = np.array([], dtype=int)
     labels_all = np.array([], dtype=int)
     with torch.no_grad():
-        for a,b,c, labels in data_iter:
+        for ids, mask , labels in test_loader:
             # print(texts)
-            outputs = model([a,b,c])
+            ids = ids.to(config.device)
+            mask = mask.to(config.device)
+            outputs = model(ids, mask)
             loss = F.cross_entropy(outputs, labels)
             loss_total += loss
             labels = labels.data.cpu().numpy()
@@ -179,5 +121,5 @@ def teacher_evaluate(config, model, data_iter, test=False):
         # data.to_csv('pred.csv', encoding="utf_8_sig")
         report = metrics.classification_report(labels_all, predict_all, target_names=config.class_list, digits=4)
         confusion = metrics.confusion_matrix(labels_all, predict_all)
-        return acc, loss_total / len(data_iter), report, confusion
-    return acc, loss_total / len(data_iter)
+        return acc, loss_total / len(test_loader), report, confusion
+    return acc, loss_total / len(test_loader)

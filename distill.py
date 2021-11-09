@@ -1,75 +1,46 @@
 # -*- coding: utf-8 -*-
 """
-# @Time    : 2020/4/29 下午1:42
+# @Time    : 2021/10/24 9:40 下午
 # @Author  : HOY
-# @Email   : huangouyan@changingedu.com
-# @File    : distill.py
-# @Software: PyCharm
+# @Email   : 893422529@qq.com
+# @File    : train_main.py
 """
-
-import time
-import pandas as pd
+from utils import *
+from config import *
 from student import *
 from teacher import *
 from models.bert import *
-from sklearn.metrics import classification_report
+from models.biLSTM import *
 
 
 if __name__ == '__main__':
 
-    np.random.seed(1)
-    torch.manual_seed(1)
-    torch.cuda.manual_seed_all(1)
-    torch.backends.cudnn.deterministic = True  # 保证每次结果一样
+    set_seed(1)
+    cfg = Config()
 
     start_time = time.time()
-    print("Loading data...")
+    print("加载数据...")
 
-    data = pd.read_csv('train.csv', encoding="utf-8", header=None, usecols=[0, 1, 2])
-    data = data.drop(index=[0])
-    data = data.sample(frac=1).reset_index(drop=True)
-    data = data.dropna()
-    data.columns = ['user', 'text', 'pred']
-    data = data.apply(pd.to_numeric, errors='ignore')
+    train_text, train_label = get_dataset(cfg.train_path)
+    test_text, test_label = get_dataset(cfg.test_path)
+    train_loader = get_loader(train_text, train_label, cfg.tokenizer)
+    test_loader = get_loader(test_text, test_label, cfg.tokenizer)
 
     time_dif = get_time_dif(start_time)
     print("Time usage:", time_dif)
 
-    train_teacher = 0
-    if train_teacher:
-        X_train, X_test, y_train, y_test = \
-            train_test_split(data['text'], data['pred'], stratify=data['pred'], test_size=0.2, random_state=1)
-        train_data = load_embed(X_train, y_train)
-        dev_data = load_embed(X_test, y_test)
+    T_model = BERT_Model(cfg).to(cfg.device)
 
-        config = Config('data')
-        T_model = Model(config)
-        teacher_train(config,T_model,train_data,dev_data)
+    if cfg.train_teacher:
+        teacher_train(T_model, cfg, train_loader, test_loader)
 
-    train_student = 1
-    if train_student:
-        X_train, X_test, y_train, y_test = \
-            train_test_split(data['text'], data['pred'], stratify=data['pred'], test_size=0.2, random_state=1)
+    if cfg.train_student:
+        S_model = biLSTM(cfg).to(cfg.device)
+        student_train(T_model, S_model, cfg, train_loader, test_loader)
 
-        student_train(X_train, X_test, y_train, y_test)
 
-    test = 0
-    if test:
-        data = pd.read_csv('dev.csv', encoding="utf-8", header=None, usecols=[0, 1, 2])
-        data = data.sample(frac=1).reset_index(drop=True)
-        data = data.dropna()
-        data.columns = ['user', 'text', 'pred']
-        data = data.apply(pd.to_numeric, errors='ignore')
 
-        s_predict = student_predict(data.text, data.pred)
-        print(classification_report(data.pred, s_predict, target_names=[x.strip() for x in open(
-            'data/class_multi1.txt').readlines()], digits=4))
-        t_predict, _ = teacher_predict(data.text, data.pred)
-        print(classification_report(data.pred, t_predict, target_names=[x.strip() for x in open(
-            'data/class_multi1.txt').readlines()], digits=4))
 
-        # data['res']=t_predict
-        # data.to_csv('res.csv')
 
 
 

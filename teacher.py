@@ -44,6 +44,7 @@ def teacher_train(model, config, train_loader, test_loader):
             # print(total_batch)
             ids = ids.to(config.device)
             mask = mask.to(config.device)
+            labels = labels.to(config.device)
             outputs = model(ids, mask)
             model.zero_grad()
             loss = F.cross_entropy(outputs, labels)
@@ -106,6 +107,7 @@ def teacher_evaluate(model, config, test_loader, test=False):
             # print(texts)
             ids = ids.to(config.device)
             mask = mask.to(config.device)
+            labels = labels.to(config.device)
             outputs = model(ids, mask)
             loss = F.cross_entropy(outputs, labels)
             loss_total += loss
